@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Project — WebRunner</title>
+    <link rel="stylesheet" href="/frontend/styles.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1>Web<span>Runner</span></h1>
+        <div class="header-actions">
+            <a href="/" class="btn btn-secondary">← Dashboard</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="wizard-steps">
+            <div class="wizard-step active" id="step-indicator-1">
+                <span class="step-number">1</span> Project Folder
+            </div>
+            <div class="wizard-step" id="step-indicator-2">
+                <span class="step-number">2</span> Configure
+            </div>
+            <div class="wizard-step" id="step-indicator-3">
+                <span class="step-number">3</span> Deploy
+            </div>
+        </div>
+
+        <!-- Step 1: Scan -->
+        <div class="card" id="step1">
+            <h3 style="margin-bottom: 16px;">Select Project Folder</h3>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
+                WebRunner will auto-detect the framework and entry point.
+            </p>
+            <div class="form-group">
+                <label>Folder path</label>
+                <input type="text" class="form-input" id="folder-path"
+                       placeholder="C:\Users\you\projects\my-django-app"
+                       autocomplete="off">
+            </div>
+            <button class="btn btn-primary" onclick="scanFolder()" id="scan-btn">Scan Folder</button>
+        </div>
+
+        <!-- Step 2: Configure -->
+        <div class="card" id="step2" style="display: none; margin-top: 16px;">
+            <h3 style="margin-bottom: 16px;">Project Details</h3>
+
+            <div class="scan-result">
+                <div class="scan-row">
+                    <span class="label">Detected Framework</span>
+                    <span class="value" id="detected-framework">—</span>
+                </div>
+                <div class="scan-row">
+                    <span class="label">Frontend</span>
+                    <span class="value" id="detected-frontend">—</span>
+                </div>
+                <div class="scan-row">
+                    <span class="label">Entry Point</span>
+                    <span class="value" id="detected-entry">—</span>
+                </div>
+                <div class="scan-row">
+                    <span class="label">Dependencies</span>
+                    <span class="value" id="detected-deps">—</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Project Name</label>
+                <input type="text" class="form-input" id="project-name" placeholder="My Django App">
+            </div>
+
+            <div class="form-group">
+                <label>Deploy to Account</label>
+                <select class="form-input" id="account-select">
+                    <option value="">Loading accounts...</option>
+                </select>
+                <p id="no-account-msg" style="display: none; color: var(--yellow); font-size: 13px; margin-top: 6px;">
+                    No accounts found.
+                    <a href="/accounts" style="color: var(--primary);">Add a Render account</a> first.
+                </p>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button class="btn btn-primary" onclick="createProject()" id="deploy-btn">Create & Deploy</button>
+                <button class="btn btn-secondary" onclick="window.location.href='/'">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/frontend/app.js"></script>
+</body>
+</html>

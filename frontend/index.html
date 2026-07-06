@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRunner</title>
+    <link rel="stylesheet" href="/frontend/styles.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1>Web<span>Runner</span></h1>
+        <div class="header-actions">
+            <a href="/add-project" class="btn btn-primary">+ Add Project</a>
+            <a href="/accounts" class="btn btn-secondary">Accounts</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="value" id="total-projects">0</div>
+                <div class="label">Total Projects</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="live-projects">0</div>
+                <div class="label">Live</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="total-accounts">0</div>
+                <div class="label">Accounts</div>
+            </div>
+        </div>
+
+        <div class="empty-state" id="empty-state">
+            <div class="icon">🚀</div>
+            <h3>No projects yet</h3>
+            <p>Add a project to deploy it to the cloud. You'll need a Render.com account (free, no credit card).</p>
+            <a href="/add-project" class="btn btn-primary">+ Add Your First Project</a>
+        </div>
+
+        <div class="project-list" id="project-list"></div>
+    </div>
+
+    <script src="/frontend/app.js"></script>
+</body>
+</html>

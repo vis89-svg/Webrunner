@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accounts — WebRunner</title>
+    <link rel="stylesheet" href="/frontend/styles.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1>Web<span>Runner</span></h1>
+        <div class="header-actions">
+            <a href="/" class="btn btn-secondary">← Dashboard</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="card" style="margin-bottom: 24px;">
+            <h3 style="margin-bottom: 16px;">Add Render Account</h3>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
+                Get your API key from <a href="https://render.com/docs/api" target="_blank" style="color: var(--primary);">Render Dashboard → Account Settings → API Keys</a>
+            </p>
+            <div class="form-group">
+                <label>Account Name</label>
+                <input type="text" class="form-input" id="acc-name" placeholder="My Render Account">
+            </div>
+            <div class="form-group">
+                <label>Render API Key</label>
+                <input type="password" class="form-input" id="acc-key" placeholder="rnd_...">
+            </div>
+            <div class="form-group">
+                <label>Email (optional, to identify this account)</label>
+                <input type="email" class="form-input" id="acc-email" placeholder="you+proj1@gmail.com">
+            </div>
+            <button class="btn btn-primary" onclick="addAccount()">Add Account</button>
+        </div>
+
+        <h3 style="margin-bottom: 12px;">Your Accounts</h3>
+        <div id="accounts-list"></div>
+    </div>
+
+    <script src="/frontend/app.js"></script>
+</body>
+</html>
