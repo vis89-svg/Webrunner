@@ -107,3 +107,13 @@ jobs:
     steps:
       - run: curl -sSf <DEPLOY_URL> > /dev/null
 ```
+
+1. User clicks "Create & Deploy"
+2. WebRunner generates render.yaml + Dockerfile
+3. Creates GitHub repo: "wr-{project-name}"
+4. git init → add → commit → push to GitHub
+5. Calls Render API: create service from GitHub repo
+6. Render starts building (poll every 10 sec)
+7. When deployed → URL is ready
+8. Sets up GitHub Actions keep-alive
+9. Project shows "Live" with URL
