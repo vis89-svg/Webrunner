@@ -296,7 +296,7 @@ async function checkConnection() {
     const statusEl = document.getElementById("conn-status");
     if (!statusEl) return;
     try {
-        const res = await fetch("http://localhost:8777/api/health");
+        const res = await fetch("/api/health");
         if (res.ok) {
             statusEl.style.display = "none";
         } else {
@@ -311,7 +311,7 @@ async function checkConnection() {
         statusEl.style.background = "#fdcb6e11";
         statusEl.style.border = "1px solid #fdcb6e";
         statusEl.style.color = "#fdcb6e";
-        statusEl.innerHTML = 'Cannot reach the API server. Make sure WebRunner is running via <b>python main.py</b> and access this page at <a href="http://localhost:8777/add-project" style="color:#6c5ce7;">http://localhost:8777/add-project</a>';
+        statusEl.innerHTML = 'Cannot reach the API. Run <b>python main.py</b> in your terminal and open <a href="http://127.0.0.1:8777/add-project" style="color:#6c5ce7;">http://127.0.0.1:8777/add-project</a>';
     }
 }
 
@@ -330,7 +330,7 @@ if (window.location.protocol === "file:") {
                     python main.py
                 </code>
                 <p style="color:#8b8fa3;">
-                    Then open <a href="http://localhost:8777" style="color:#6c5ce7;">http://localhost:8777</a>
+                    Then open <a href="http://127.0.0.1:8777" style="color:#6c5ce7;">http://127.0.0.1:8777</a>
                 </p>
             </div>
         </div>

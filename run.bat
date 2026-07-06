@@ -1,9 +1,10 @@
 @echo off
 cd /d "%~dp0"
-echo Starting WebRunner...
+echo.
+echo ========================================================
+echo  WebRunner - Starting...
+echo ========================================================
+echo.
 python main.py
-if errorlevel 1 (
-    echo.
-    echo Failed to start. Make sure Python is installed.
-    pause
-)
+echo.
+pause

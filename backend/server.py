@@ -1,8 +1,5 @@
 import os
-import json
-import threading
-import webbrowser
-from pathlib import Path
+import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -228,23 +225,47 @@ def serve_add_project():
 def serve_accounts():
     return _serve_html("accounts.html")
 
-def open_browser():
-    webbrowser.open("http://localhost:8777")
-
 def start_server():
     import uvicorn
+    import socket
+
     db.init_db()
+
+    # Find available port
+    port = 8777
+    for attempt in range(10):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                break
+            except OSError:
+                port += 1
+    else:
+        print("ERROR: Could not find a free port")
+        input("Press Enter to exit...")
+        return
+
+    print()
     print("=" * 56)
     print("  WebRunner - Desktop Deployer")
-    print(f"  Dashboard: http://localhost:8777")
-    print(f"  Frontend:  {static_dir}")
+    print()
+    print(f"    >>>  http://127.0.0.1:{port}  <<<")
+    print()
+    print(f"  Frontend files: {static_dir}")
     for f in ("index.html", "add-project.html", "accounts.html"):
         p = os.path.join(static_dir, f)
         ok = "OK" if os.path.isfile(p) else "MISSING"
         print(f"    [{ok}] {f}")
     print("=" * 56)
-    print("  Keep this terminal window OPEN while using WebRunner")
-    print("  Close it when done")
+    print("  Press Ctrl+C in this window to stop WebRunner")
     print("=" * 56)
-    threading.Timer(1.5, open_browser).start()
-    uvicorn.run(app, host="127.0.0.1", port=8777, log_level="info")
+    print()
+    try:
+        uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    except KeyboardInterrupt:
+        print("\nWebRunner stopped.")
+    except Exception as e:
+        print(f"\nWebRunner error: {e}")
+        import traceback
+        traceback.print_exc()
+        input("\nPress Enter to exit...")
