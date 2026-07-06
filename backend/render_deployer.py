@@ -1,23 +1,134 @@
 import httpx
 import os
+import subprocess
+import tempfile
+import shutil
+import uuid
+import time
 
-RENDER_API_BASE = "https://api.render.com/v1"
+GITHUB_API = "https://api.github.com"
+RENDER_API = "https://api.render.com/v1"
 
-def _headers(api_key):
+# --- Helpers ---
+
+def _gh_headers(token):
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "WebRunner",
+    }
+
+def _r_headers(api_key):
     return {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 
+def _parse_error(resp):
+    try:
+        data = resp.json()
+        if isinstance(data, dict):
+            return data.get("message", data.get("error", str(resp.text)))
+    except:
+        pass
+    return resp.text[:200]
+
+# --- GitHub API ---
+
+def get_github_username(token):
+    resp = httpx.get(f"{GITHUB_API}/user", headers=_gh_headers(token), timeout=10)
+    if resp.status_code != 200:
+        raise Exception(f"GitHub auth failed: {_parse_error(resp)}")
+    return resp.json()["login"]
+
+def create_github_repo(token, repo_name, private=True):
+    resp = httpx.post(
+        f"{GITHUB_API}/user/repos",
+        headers=_gh_headers(token),
+        json={
+            "name": repo_name,
+            "private": private,
+            "auto_init": False,
+            "description": "Deployed by WebRunner",
+        },
+        timeout=15,
+    )
+    if resp.status_code in (201, 200):
+        return resp.json()["clone_url"]
+    if resp.status_code == 422:
+        err = _parse_error(resp)
+        if "already exists" in err.lower():
+            raise Exception(f"GitHub repo '{repo_name}' already exists. Delete it or use a different project name.")
+        raise Exception(f"GitHub error: {err}")
+    raise Exception(f"GitHub error: {_parse_error(resp)}")
+
+def push_to_github(token, username, repo_name, project_path):
+    deploy_id = str(uuid.uuid4())[:8]
+    temp_dir = os.path.join(tempfile.gettempdir(), f"wr-{deploy_id}")
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+
+    shutil.copytree(
+        project_path, temp_dir,
+        ignore=shutil.ignore_patterns("__pycache__", ".git", ".env", "node_modules", "venv", ".venv"),
+    )
+
+    repo_url = f"https://{token}@github.com/{username}/{repo_name}.git"
+
+    try:
+        subprocess.run(["git", "init"], cwd=temp_dir, capture_output=True, check=True, timeout=30)
+        subprocess.run(["git", "config", "user.email", "webrunner@local.dev"], cwd=temp_dir, capture_output=True, check=True, timeout=10)
+        subprocess.run(["git", "config", "user.name", "WebRunner"], cwd=temp_dir, capture_output=True, check=True, timeout=10)
+        subprocess.run(["git", "add", "-A"], cwd=temp_dir, capture_output=True, check=True, timeout=30)
+        subprocess.run(["git", "commit", "-m", "Initial commit from WebRunner"], cwd=temp_dir, capture_output=True, check=True, timeout=30)
+        subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=temp_dir, capture_output=True, check=True, timeout=10)
+        result = subprocess.run(
+            ["git", "push", "-u", "origin", "main"],
+            cwd=temp_dir,
+            capture_output=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            stderr = result.stderr.decode("utf-8", errors="replace")
+            if "couldn't find remote ref" in stderr or "src refspec" in stderr:
+                subprocess.run(["git", "branch", "-M", "main"], cwd=temp_dir, capture_output=True, timeout=10)
+                result = subprocess.run(
+                    ["git", "push", "-u", "origin", "main"],
+                    cwd=temp_dir, capture_output=True, timeout=120,
+                )
+            if result.returncode != 0:
+                raise Exception(f"Git push failed: {result.stderr.decode('utf-8', errors='replace')[:300]}")
+    except subprocess.TimeoutExpired:
+        raise Exception("Git push timed out. Your project might be too large or your internet is slow.")
+    except FileNotFoundError:
+        raise Exception("Git is not installed or not in PATH. Install git from https://git-scm.com")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    return repo_url
+
+# --- Render API ---
+
 def validate_api_key(api_key):
     try:
-        resp = httpx.get(f"{RENDER_API_BASE}/owners", headers=_headers(api_key), timeout=10)
+        resp = httpx.get(f"{RENDER_API}/owners", headers=_r_headers(api_key), timeout=10)
         return resp.status_code == 200
     except:
         return False
 
-def _generate_render_yaml(project_name, framework, entry_point, has_requirements):
+def get_owner_id(api_key):
+    resp = httpx.get(f"{RENDER_API}/owners", headers=_r_headers(api_key), timeout=10)
+    if resp.status_code != 200:
+        raise Exception(f"Render auth failed: {_parse_error(resp)}")
+    owners = resp.json()
+    if not owners:
+        raise Exception("No Render owners found. Create a team or workspace first.")
+    return owners[0]["id"], owners[0]["name"]
+
+def create_render_service(api_key, project_name, framework, entry_point, github_repo_url, has_requirements):
+    owner_id, owner_name = get_owner_id(api_key)
     safe_name = project_name.lower().replace(" ", "-").replace("_", "-")
+    service_name = f"wr-{safe_name}"
 
     if has_requirements:
         build_cmd = "pip install -r requirements.txt"
@@ -25,16 +136,115 @@ def _generate_render_yaml(project_name, framework, entry_point, has_requirements
         build_cmd = "pip install gunicorn"
 
     if framework == "django":
-        # Try common Django wsgi paths
         start_cmd = f"gunicorn {safe_name}.wsgi:application"
     elif framework == "flask":
-        app_module = entry_point.replace(".py", "")
+        app_module = entry_point.replace(".py", "") if entry_point else "app"
         start_cmd = f"gunicorn {app_module}:app"
     elif framework == "fastapi":
-        app_module = entry_point.replace(".py", "")
+        app_module = entry_point.replace(".py", "") if entry_point else "main"
         start_cmd = f"uvicorn {app_module}:app --host 0.0.0.0 --port 10000"
     else:
-        start_cmd = f"python {entry_point}"
+        start_cmd = f"python {entry_point or 'main.py'}"
+
+    payload = {
+        "type": "web_service",
+        "name": service_name,
+        "repo": github_repo_url,
+        "autoDeploy": "yes",
+        "branch": "main",
+        "serviceDetails": {
+            "env": "python",
+            "buildCommand": build_cmd,
+            "startCommand": start_cmd,
+            "plan": "free",
+            "pullRequestPreviewsEnabled": "no",
+        },
+    }
+
+    resp = httpx.post(
+        f"{RENDER_API}/services",
+        headers=_r_headers(api_key),
+        json=payload,
+        timeout=30,
+    )
+
+    if resp.status_code not in (200, 201):
+        raise Exception(f"Render API error: {_parse_error(resp)}")
+
+    data = resp.json()
+    service_id = data.get("id")
+    service_url = data.get("serviceDetails", {}).get("url", "")
+
+    return service_id, service_url
+
+def wait_for_deploy(api_key, service_id, progress_callback=None):
+    max_attempts = 60
+    for attempt in range(max_attempts):
+        try:
+            resp = httpx.get(
+                f"{RENDER_API}/services/{service_id}/deploys",
+                headers=_r_headers(api_key),
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                deploys = resp.json()
+                if deploys:
+                    latest = deploys[0]
+                    status = latest.get("status", "")
+                    deploy_id = latest.get("id", "")
+
+                    if status == "live":
+                        # Get the service URL
+                        svc_resp = httpx.get(
+                            f"{RENDER_API}/services/{service_id}",
+                            headers=_r_headers(api_key),
+                            timeout=10,
+                        )
+                        if svc_resp.status_code == 200:
+                            svc_data = svc_resp.json()
+                            url = svc_data.get("serviceDetails", {}).get("url", "")
+                            if progress_callback:
+                                progress_callback("live", "Deployment complete!", 100)
+                            return url, deploy_id
+
+                    elif status == "build_in_progress":
+                        if progress_callback:
+                            progress_callback("building", "Building on Render...", 40 + (attempt * 2))
+                    elif status == "deploy_in_progress":
+                        if progress_callback:
+                            progress_callback("deploying", "Deploying...", 70 + attempt)
+                    elif status == "failed":
+                        if progress_callback:
+                            progress_callback("error", "Render deployment failed", 0)
+                        return None, deploy_id
+        except:
+            pass
+
+        if progress_callback:
+            progress_callback("waiting", "Waiting for Render...", 30)
+
+        time.sleep(5)
+
+    if progress_callback:
+        progress_callback("error", "Deployment timed out", 0)
+    return None, None
+
+# --- Config file generation ---
+
+def _generate_render_yaml(project_name, framework, entry_point, has_requirements):
+    safe_name = project_name.lower().replace(" ", "-").replace("_", "-")
+    build_cmd = "pip install -r requirements.txt" if has_requirements else "pip install gunicorn"
+
+    if framework == "django":
+        start_cmd = f"gunicorn {safe_name}.wsgi:application"
+    elif framework == "flask":
+        app_module = entry_point.replace(".py", "") if entry_point else "app"
+        start_cmd = f"gunicorn {app_module}:app"
+    elif framework == "fastapi":
+        app_module = entry_point.replace(".py", "") if entry_point else "main"
+        start_cmd = f"uvicorn {app_module}:app --host 0.0.0.0 --port 10000"
+    else:
+        start_cmd = f"python {entry_point or 'main.py'}"
 
     return f"""services:
   - type: web
@@ -45,111 +255,18 @@ def _generate_render_yaml(project_name, framework, entry_point, has_requirements
     startCommand: {start_cmd}
 """
 
-def _generate_dockerfile(framework, entry_point):
-    if framework == "django":
-        entry_cmd = f'gunicorn mysite.wsgi:application --bind 0.0.0.0:10000'
-    elif framework == "flask":
-        app_module = entry_point.replace(".py", "")
-        entry_cmd = f'gunicorn {app_module}:app --bind 0.0.0.0:10000'
-    elif framework == "fastapi":
-        app_module = entry_point.replace(".py", "")
-        entry_cmd = f'uvicorn {app_module}:app --host 0.0.0.0 --port 10000'
-    else:
-        entry_cmd = f'python {entry_point}'
-
-    return f"""FROM python:3.11-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-EXPOSE 10000
-CMD [{', '.join(f'"{p}"' for p in entry_cmd.split())}]
-"""
-
-def _generate_gitignore():
-    return """__pycache__/
-*.py[cod]
-.env
-venv/
-env/
-.DS_Store
-*.db
-"""
-
 def prepare_project_files(project_path, project_name, framework, entry_point, has_requirements):
     created = []
-
     render_yaml = os.path.join(project_path, "render.yaml")
     if not os.path.exists(render_yaml):
         with open(render_yaml, "w") as f:
             f.write(_generate_render_yaml(project_name, framework, entry_point, has_requirements))
         created.append("render.yaml")
 
-    dockerfile = os.path.join(project_path, "Dockerfile")
-    if not os.path.exists(dockerfile):
-        with open(dockerfile, "w") as f:
-            f.write(_generate_dockerfile(framework, entry_point))
-        created.append("Dockerfile")
-
     gitignore = os.path.join(project_path, ".gitignore")
     if not os.path.exists(gitignore):
         with open(gitignore, "w") as f:
-            f.write(_generate_gitignore())
+            f.write("__pycache__/\n*.py[cod]\n.env\nvenv/\nenv/\n.DS_Store\n*.db\n")
         created.append(".gitignore")
 
     return created
-
-def get_deploy_instructions(project_name):
-    safe_name = project_name.lower().replace(" ", "-").replace("_", "-")
-    return {
-        "steps": [
-            "1. Push your project to a GitHub repository",
-            "2. Log in to https://dashboard.render.com",
-            '3. Click "New +" → "Blueprint"',
-            "4. Connect your GitHub repo",
-            "5. Render will detect render.yaml and deploy automatically",
-        ],
-        "expected_url": f"https://{safe_name}.onrender.com",
-        "dashboard_url": "https://dashboard.render.com",
-    }
-
-def create_service(api_key, project_name, project_path):
-    owner_id, owner_name = get_owner_id(api_key)
-    safe_name = project_name.lower().replace(" ", "-").replace("_", "-")
-    service_name = f"wr-{safe_name}"
-
-    prepare_project_files(project_path, project_name, None, "main.py", False)
-
-    return None, None, None
-
-def get_service_status(api_key, service_id):
-    if not service_id:
-        return {"status": "unknown", "url": ""}
-    try:
-        resp = httpx.get(
-            f"{RENDER_API_BASE}/services/{service_id}",
-            headers=_headers(api_key),
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            return {"status": "unknown", "url": ""}
-        data = resp.json()
-        return {
-            "status": data.get("serviceDetails", {}).get("state", "unknown"),
-            "url": data.get("serviceDetails", {}).get("url", ""),
-        }
-    except:
-        return {"status": "unknown", "url": ""}
-
-def delete_service(api_key, service_id):
-    if not service_id:
-        return True
-    try:
-        resp = httpx.delete(
-            f"{RENDER_API_BASE}/services/{service_id}",
-            headers=_headers(api_key),
-            timeout=10,
-        )
-        return resp.status_code in (200, 204)
-    except:
-        return False

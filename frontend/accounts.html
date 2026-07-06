@@ -16,21 +16,32 @@
 
     <div class="container">
         <div class="card" style="margin-bottom: 24px;">
-            <h3 style="margin-bottom: 16px;">Add Render Account</h3>
+            <h3 style="margin-bottom: 16px;">Add Render + GitHub Account</h3>
             <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
-                Get your API key from <a href="https://render.com/docs/api" target="_blank" style="color: var(--primary);">Render Dashboard → Account Settings → API Keys</a>
+                You need both a Render API key and a GitHub token for one-click deploy.
             </p>
             <div class="form-group">
                 <label>Account Name</label>
-                <input type="text" class="form-input" id="acc-name" placeholder="My Render Account">
+                <input type="text" class="form-input" id="acc-name" placeholder="My Account">
             </div>
             <div class="form-group">
                 <label>Render API Key</label>
                 <input type="password" class="form-input" id="acc-key" placeholder="rnd_...">
+                <p style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">
+                    From <a href="https://dashboard.render.com" target="_blank" style="color: var(--primary);">dashboard.render.com</a> → Account Settings → API Keys
+                </p>
             </div>
             <div class="form-group">
-                <label>Email (optional, to identify this account)</label>
-                <input type="email" class="form-input" id="acc-email" placeholder="you+proj1@gmail.com">
+                <label>GitHub Personal Access Token</label>
+                <input type="password" class="form-input" id="acc-gh-token" placeholder="github_pat_...">
+                <p style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">
+                    From <a href="https://github.com/settings/tokens" target="_blank" style="color: var(--primary);">github.com/settings/tokens</a>
+                    → Generate new token → tick <b>repo</b> scope
+                </p>
+            </div>
+            <div class="form-group">
+                <label>Email (optional)</label>
+                <input type="email" class="form-input" id="acc-email" placeholder="you@example.com">
             </div>
             <button class="btn btn-primary" onclick="addAccount()">Add Account</button>
         </div>

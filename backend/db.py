@@ -17,6 +17,7 @@ def init_db():
             name TEXT NOT NULL,
             provider TEXT NOT NULL CHECK(provider IN ('render', 'pythonanywhere')),
             api_key TEXT NOT NULL,
+            github_token TEXT DEFAULT '',
             email TEXT,
             is_active INTEGER DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -32,6 +33,7 @@ def init_db():
             account_id INTEGER REFERENCES accounts(id),
             deploy_url TEXT,
             render_service_id TEXT,
+            github_repo TEXT,
             status TEXT DEFAULT 'pending' CHECK(status IN ('pending','deploying','live','error','removed')),
             keep_alive_setup INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -47,16 +49,28 @@ def get_all_accounts():
     conn.close()
     return [dict(r) for r in rows]
 
-def add_account(name, provider, api_key, email=""):
+def add_account(name, provider, api_key, email="", github_token=""):
     conn = get_conn()
     cur = conn.execute(
-        "INSERT INTO accounts (name, provider, api_key, email) VALUES (?, ?, ?, ?)",
-        (name, provider, api_key, email)
+        "INSERT INTO accounts (name, provider, api_key, email, github_token) VALUES (?, ?, ?, ?, ?)",
+        (name, provider, api_key, email, github_token)
     )
     conn.commit()
     id_ = cur.lastrowid
     conn.close()
     return id_
+
+def update_account(account_id, **kwargs):
+    allowed = ["github_token", "api_key", "name"]
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [account_id]
+    conn = get_conn()
+    conn.execute(f"UPDATE accounts SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
 
 def delete_account(account_id):
     conn = get_conn()
@@ -67,7 +81,8 @@ def delete_account(account_id):
 def get_all_projects():
     conn = get_conn()
     rows = conn.execute("""
-        SELECT p.*, a.name as account_name, a.provider as account_provider
+        SELECT p.*, a.name as account_name, a.provider as account_provider,
+               a.github_token
         FROM projects p
         LEFT JOIN accounts a ON p.account_id = a.id
         WHERE p.status != 'removed'
@@ -79,7 +94,8 @@ def get_all_projects():
 def get_project(project_id):
     conn = get_conn()
     row = conn.execute("""
-        SELECT p.*, a.name as account_name, a.provider as account_provider
+        SELECT p.*, a.name as account_name, a.provider as account_provider,
+               a.github_token, a.api_key
         FROM projects p
         LEFT JOIN accounts a ON p.account_id = a.id
         WHERE p.id = ?
@@ -99,7 +115,7 @@ def add_project(name, folder_path, framework, frontend_framework, entry_point, a
     return id_
 
 def update_project(project_id, **kwargs):
-    allowed = ["status", "deploy_url", "render_service_id", "keep_alive_setup", "updated_at"]
+    allowed = ["status", "deploy_url", "render_service_id", "github_repo", "keep_alive_setup", "updated_at"]
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return

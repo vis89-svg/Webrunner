@@ -16,6 +16,7 @@
 
     <div class="container">
         <div id="conn-status" style="text-align:center;padding:8px;margin-bottom:16px;border-radius:6px;font-size:13px;display:none;"></div>
+
         <div class="wizard-steps">
             <div class="wizard-step active" id="step-indicator-1">
                 <span class="step-number">1</span> Project Folder
@@ -78,13 +79,24 @@
                 </select>
                 <p id="no-account-msg" style="display: none; color: var(--yellow); font-size: 13px; margin-top: 6px;">
                     No accounts found.
-                    <a href="/accounts" style="color: var(--primary);">Add a Render account</a> first.
+                    <a href="/accounts" style="color: var(--primary);">Add an account</a> first.
                 </p>
             </div>
 
             <div style="display: flex; gap: 12px; margin-top: 20px;">
                 <button class="btn btn-primary" onclick="createProject()" id="deploy-btn">Create & Deploy</button>
                 <button class="btn btn-secondary" onclick="window.location.href='/'">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Deploy Progress -->
+        <div id="deploy-progress-panel" style="display: none; margin-top: 16px;">
+            <div class="card">
+                <h3 style="margin-bottom: 16px;">Deploying...</h3>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+                <p id="progress-message" style="color: var(--text-muted); font-size: 14px; margin-top: 12px;">Starting...</p>
             </div>
         </div>
     </div>
