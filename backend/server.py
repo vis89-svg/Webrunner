@@ -5,7 +5,8 @@ import webbrowser
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from . import db
@@ -14,6 +15,14 @@ from . import render_deployer
 from . import keep_alive
 
 app = FastAPI(title="WebRunner")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 def on_startup():
@@ -197,17 +206,27 @@ def check_status(project_id: int):
 def favicon():
     return "", 204
 
+def _serve_html(filename):
+    path = os.path.join(static_dir, filename)
+    if not os.path.isfile(path):
+        return HTMLResponse(
+            f"<html><body><h1>File not found</h1><p>{filename} not at {path}</p>"
+            f"<p>static_dir = {static_dir}</p></body></html>",
+            status_code=404,
+        )
+    return FileResponse(path)
+
 @app.get("/")
 def serve_index():
-    return FileResponse(os.path.join(static_dir, "index.html"))
+    return _serve_html("index.html")
 
 @app.get("/add-project")
 def serve_add_project():
-    return FileResponse(os.path.join(static_dir, "add-project.html"))
+    return _serve_html("add-project.html")
 
 @app.get("/accounts")
 def serve_accounts():
-    return FileResponse(os.path.join(static_dir, "accounts.html"))
+    return _serve_html("accounts.html")
 
 def open_browser():
     webbrowser.open("http://localhost:8777")
@@ -215,9 +234,17 @@ def open_browser():
 def start_server():
     import uvicorn
     db.init_db()
-    print("=" * 50)
+    print("=" * 56)
     print("  WebRunner - Desktop Deployer")
-    print("  Open: http://localhost:8777")
-    print("=" * 50)
+    print(f"  Dashboard: http://localhost:8777")
+    print(f"  Frontend:  {static_dir}")
+    for f in ("index.html", "add-project.html", "accounts.html"):
+        p = os.path.join(static_dir, f)
+        ok = "OK" if os.path.isfile(p) else "MISSING"
+        print(f"    [{ok}] {f}")
+    print("=" * 56)
+    print("  Keep this terminal window OPEN while using WebRunner")
+    print("  Close it when done")
+    print("=" * 56)
     threading.Timer(1.5, open_browser).start()
     uvicorn.run(app, host="127.0.0.1", port=8777, log_level="info")

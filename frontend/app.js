@@ -20,7 +20,11 @@ async function apiFetch(path, opts = {}) {
         }
         return await res.json();
     } catch (e) {
-        toast(e.message, "error");
+        if (e.message === "Failed to fetch") {
+            toast("Cannot reach the API server. Make sure WebRunner is running (python main.py) and the terminal window is open.", "error");
+        } else {
+            toast(e.message, "error");
+        }
         throw e;
     }
 }
@@ -287,8 +291,56 @@ async function deleteAccount(id) {
     } catch (e) {}
 }
 
+// Connectivity check
+async function checkConnection() {
+    const statusEl = document.getElementById("conn-status");
+    if (!statusEl) return;
+    try {
+        const res = await fetch("http://localhost:8777/api/health");
+        if (res.ok) {
+            statusEl.style.display = "none";
+        } else {
+            statusEl.style.display = "block";
+            statusEl.style.background = "#e1705511";
+            statusEl.style.border = "1px solid #e17055";
+            statusEl.style.color = "#e17055";
+            statusEl.innerHTML = "API server responded but with an error. Try restarting WebRunner.";
+        }
+    } catch {
+        statusEl.style.display = "block";
+        statusEl.style.background = "#fdcb6e11";
+        statusEl.style.border = "1px solid #fdcb6e";
+        statusEl.style.color = "#fdcb6e";
+        statusEl.innerHTML = 'Cannot reach the API server. Make sure WebRunner is running via <b>python main.py</b> and access this page at <a href="http://localhost:8777/add-project" style="color:#6c5ce7;">http://localhost:8777/add-project</a>';
+    }
+}
+
+// Check if accessed via file:// protocol (user opened HTML directly)
+if (window.location.protocol === "file:") {
+    document.body.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0f1117;color:#e4e6f0;font-family:sans-serif;padding:40px;text-align:center;">
+            <div>
+                <h1 style="color:#6c5ce7;margin-bottom:16px;">WebRunner</h1>
+                <h2 style="margin-bottom:12px;">Open via the server, not the file</h2>
+                <p style="color:#8b8fa3;margin-bottom:20px;max-width:500px;">
+                    You opened this HTML file directly. WebRunner needs to run through its Python server.
+                </p>
+                <code style="display:block;background:#1a1d27;padding:12px 20px;border-radius:6px;border:1px solid #2e3345;margin-bottom:20px;">
+                    cd C:\Users\visha\OneDrive\Desktop\Webrunner<br>
+                    python main.py
+                </code>
+                <p style="color:#8b8fa3;">
+                    Then open <a href="http://localhost:8777" style="color:#6c5ce7;">http://localhost:8777</a>
+                </p>
+            </div>
+        </div>
+    `;
+    throw new Error("file:// access detected");
+}
+
 // Init
 document.addEventListener("DOMContentLoaded", () => {
     if (document.getElementById("project-list")) loadDashboard();
     if (document.getElementById("accounts-list")) loadAccountsPage();
+    if (document.getElementById("folder-path")) checkConnection();
 });

@@ -15,6 +15,7 @@
     </header>
 
     <div class="container">
+        <div id="conn-status" style="text-align:center;padding:8px;margin-bottom:16px;border-radius:6px;font-size:13px;display:none;"></div>
         <div class="wizard-steps">
             <div class="wizard-step active" id="step-indicator-1">
                 <span class="step-number">1</span> Project Folder
@@ -46,7 +47,7 @@
         <div class="card" id="step2" style="display: none; margin-top: 16px;">
             <h3 style="margin-bottom: 16px;">Project Details</h3>
 
-            <div class="scan-result">
+            <div class="scan-result" id="scan-result">
                 <div class="scan-row">
                     <span class="label">Detected Framework</span>
                     <span class="value" id="detected-framework">—</span>
