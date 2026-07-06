@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -54,6 +55,10 @@ class DeleteProjectRequest(BaseModel):
 
 class DeleteAccountRequest(BaseModel):
     account_id: int
+
+class MarkLiveRequest(BaseModel):
+    project_id: int
+    url: str
 
 # --- API Routes ---
 
@@ -126,48 +131,39 @@ def deploy_project(req: DeployRequest):
     if not account:
         raise HTTPException(status_code=400, detail="No account assigned to this project")
 
-    db.update_project(project["id"], status="deploying")
+    try:
+        created_files = render_deployer.prepare_project_files(
+            project_path=project["folder_path"],
+            project_name=project["name"],
+            framework=project["framework"],
+            entry_point=project["entry_point"],
+            has_requirements=True,
+        )
 
-    def do_deploy():
-        try:
-            render_deployer.prepare_project_files(
-                project_path=project["folder_path"],
-                project_name=project["name"],
-                framework=project["framework"],
-                entry_point=project["entry_point"],
-                has_requirements=True,
-            )
+        safe_name = project["name"].lower().replace(" ", "-").replace("_", "-")
+        expected_url = f"https://{safe_name}.onrender.com"
+        instructions = render_deployer.get_deploy_instructions(project["name"])
 
-            service_id, service_url, temp_dir = render_deployer.create_service(
-                api_key=account["api_key"],
-                project_name=project["name"],
-                project_path=project["folder_path"],
-            )
+        db.update_project(project["id"], status="deploying", deploy_url=expected_url)
 
-            db.update_project(
-                project["id"],
-                status="live",
-                deploy_url=service_url,
-                render_service_id=service_id,
-            )
+        return {
+            "message": "Deployment files generated",
+            "files_created": created_files,
+            "expected_url": expected_url,
+            "instructions": instructions,
+            "project_id": project["id"],
+        }
+    except Exception as e:
+        db.update_project(project["id"], status="error")
+        raise HTTPException(status_code=500, detail=str(e))
 
-            try:
-                keep_alive.setup_github_actions(
-                    project_path=project["folder_path"],
-                    project_name=project["name"],
-                    deploy_url=service_url,
-                )
-                db.update_project(project["id"], keep_alive_setup=1)
-            except:
-                pass
-
-        except Exception as e:
-            db.update_project(project["id"], status="error")
-
-    thread = threading.Thread(target=do_deploy, daemon=True)
-    thread.start()
-
-    return {"message": "Deployment started", "project_id": project["id"]}
+@app.post("/api/projects/mark-live")
+def mark_project_live(req: MarkLiveRequest):
+    project = db.get_project(req.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    db.update_project(req.project_id, status="live", deploy_url=req.url)
+    return {"message": "Project marked as live", "url": req.url}
 
 @app.post("/api/projects/delete")
 def remove_project(req: DeleteProjectRequest):

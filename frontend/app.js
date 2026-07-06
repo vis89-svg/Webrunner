@@ -103,13 +103,15 @@ async function loadDashboard() {
 
 async function deployProject(id) {
     const btn = document.querySelector(`.project-card[data-id="${id}"] .btn-primary`);
-    if (btn) { btn.disabled = true; btn.textContent = "Deploying..."; }
+    if (btn) { btn.disabled = true; btn.textContent = "Preparing..."; }
     try {
-        await apiFetch("/projects/deploy", {
+        const result = await apiFetch("/projects/deploy", {
             method: "POST",
             body: JSON.stringify({ project_id: id }),
         });
-        toast("Deployment started!", "success");
+        const url = result.expected_url || "https://your-app.onrender.com";
+        const msg = `Files generated! Push to GitHub and connect at render.com. Expected URL: ${url}`;
+        toast(msg, "success");
         setTimeout(loadDashboard, 2000);
     } catch (e) {
         if (btn) { btn.disabled = false; btn.textContent = "Deploy"; }
