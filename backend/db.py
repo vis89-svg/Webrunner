@@ -11,6 +11,13 @@ def get_conn():
 
 def init_db():
     conn = get_conn()
+    # Migration: add has_requirements if missing (old projects default to True)
+    try:
+        conn.execute("ALTER TABLE projects ADD COLUMN has_requirements INTEGER")
+        conn.execute("UPDATE projects SET has_requirements = 1 WHERE has_requirements IS NULL")
+    except:
+        pass
+
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,6 +39,7 @@ def init_db():
             entry_point TEXT,
             account_id INTEGER REFERENCES accounts(id),
             deploy_url TEXT,
+            has_requirements INTEGER DEFAULT 0,
             render_service_id TEXT,
             github_repo TEXT,
             status TEXT DEFAULT 'pending' CHECK(status IN ('pending','deploying','live','error','removed')),
@@ -103,11 +111,11 @@ def get_project(project_id):
     conn.close()
     return dict(row) if row else None
 
-def add_project(name, folder_path, framework, frontend_framework, entry_point, account_id):
+def add_project(name, folder_path, framework, frontend_framework, entry_point, account_id, has_requirements=0):
     conn = get_conn()
     cur = conn.execute(
-        "INSERT INTO projects (name, folder_path, framework, frontend_framework, entry_point, account_id) VALUES (?, ?, ?, ?, ?, ?)",
-        (name, folder_path, framework, frontend_framework, entry_point, account_id)
+        "INSERT INTO projects (name, folder_path, framework, frontend_framework, entry_point, account_id, has_requirements) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (name, folder_path, framework, frontend_framework, entry_point, account_id, int(has_requirements))
     )
     conn.commit()
     id_ = cur.lastrowid
@@ -115,7 +123,7 @@ def add_project(name, folder_path, framework, frontend_framework, entry_point, a
     return id_
 
 def update_project(project_id, **kwargs):
-    allowed = ["status", "deploy_url", "render_service_id", "github_repo", "keep_alive_setup", "updated_at"]
+    allowed = ["status", "deploy_url", "has_requirements", "render_service_id", "github_repo", "keep_alive_setup", "updated_at"]
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return

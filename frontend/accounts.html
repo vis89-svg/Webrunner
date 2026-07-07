@@ -33,10 +33,14 @@
             </div>
             <div class="form-group">
                 <label>GitHub Personal Access Token</label>
-                <input type="password" class="form-input" id="acc-gh-token" placeholder="github_pat_...">
+                <div style="display:flex;gap:8px;">
+                    <input type="password" class="form-input" id="acc-gh-token" placeholder="github_pat_..." style="flex:1;">
+                    <button class="btn btn-secondary" onclick="testGithubToken()" id="test-gh-btn" style="white-space:nowrap;">Test</button>
+                </div>
+                <div id="test-gh-result" style="margin-top:6px;font-size:13px;min-height:20px;"></div>
                 <p style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">
                     From <a href="https://github.com/settings/tokens" target="_blank" style="color: var(--primary);">github.com/settings/tokens</a>
-                    → Generate new token → tick <b>repo</b> scope
+                    → Generate new token → tick <b>repo</b> scope (or fine-grained with All repos + Administration:Read & write + Contents:Read & write)
                 </p>
             </div>
             <div class="form-group">

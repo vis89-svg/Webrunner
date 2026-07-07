@@ -92,11 +92,18 @@
         <!-- Deploy Progress -->
         <div id="deploy-progress-panel" style="display: none; margin-top: 16px;">
             <div class="card">
-                <h3 style="margin-bottom: 16px;">Deploying...</h3>
+                <h3 id="deploy-heading" style="margin-bottom: 16px;">Deploying...</h3>
                 <div class="progress-bar-container">
                     <div class="progress-bar" id="progress-bar"></div>
                 </div>
                 <p id="progress-message" style="color: var(--text-muted); font-size: 14px; margin-top: 12px;">Starting...</p>
+                <div id="deploy-error-detail" style="display:none;margin-top:12px;padding:12px;background:rgba(225,112,85,0.1);border:1px solid var(--red);border-radius:var(--radius-sm);">
+                    <p id="deploy-error-message" style="color:var(--red);font-size:13px;font-family:monospace;word-break:break-all;"></p>
+                </div>
+                <div id="deploy-error-actions" style="display:none;margin-top:16px;gap:8px;align-items:center;">
+                    <button class="btn btn-primary" onclick="retryDeploy()" id="retry-btn">Retry</button>
+                    <a href="/" class="btn btn-secondary" style="margin-left:8px;">← Back to Dashboard</a>
+                </div>
             </div>
         </div>
     </div>

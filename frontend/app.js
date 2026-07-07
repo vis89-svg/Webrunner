@@ -1,5 +1,6 @@
 const API = "/api";
 let deployPollTimer = null;
+let currentProjectId = null;
 
 function toast(msg, type = "info") {
     const t = document.createElement("div");
@@ -156,7 +157,15 @@ function startDeployPoll(projectId) {
                 return;
             }
             if (p.step === "error") {
-                setTimeout(loadDashboard, 2000);
+                if (detail) {
+                    detail.textContent = "Error: " + (p.message || "Deployment failed");
+                    detail.style.color = "var(--red)";
+                }
+                const card = document.querySelector(`.project-card[data-id="${projectId}"]`);
+                if (card) {
+                    const statusEl = card.querySelector(".project-status");
+                    if (statusEl) statusEl.innerHTML = '<span class="status-dot status-error"></span> Error';
+                }
                 return;
             }
             setTimeout(poll, 3000);
@@ -253,47 +262,83 @@ async function createProject() {
             method: "POST",
             body: JSON.stringify({ name, folder_path: folderPath, account_id: parseInt(accountId) }),
         });
+        currentProjectId = result.id;
         toast("Project created! Deploying...", "success");
 
         // Show progress panel
         document.getElementById("deploy-progress-panel").style.display = "block";
+        document.getElementById("deploy-progress-panel").scrollIntoView({ behavior: "smooth" });
         document.getElementById("progress-message").textContent = "Starting deployment...";
+        document.getElementById("deploy-heading").textContent = "Deploying...";
+        document.getElementById("deploy-error-detail").style.display = "none";
+        document.getElementById("deploy-error-actions").style.display = "none";
 
         await apiFetch("/projects/deploy", { method: "POST", body: JSON.stringify({ project_id: result.id }) });
 
         // Poll progress
-        const pollProgress = async () => {
-            try {
-                const p = await apiFetch(`/projects/${result.id}/deploy-progress`);
-                const bar = document.getElementById("progress-bar");
-                const msg = document.getElementById("progress-message");
-                if (bar) bar.style.width = `${p.pct || 0}%`;
-                if (msg) msg.textContent = p.message || "Working...";
-                if (bar) {
-                    bar.className = "progress-bar";
-                    if (p.step === "error") bar.classList.add("error");
-                    if (p.step === "live") bar.classList.add("live");
-                }
-                if (p.step === "live") {
-                    setTimeout(() => window.location.href = "/", 2000);
-                    return;
-                }
-                if (p.step === "error") {
-                    btn.disabled = false;
-                    btn.textContent = "Retry";
-                    setTimeout(() => window.location.href = "/", 4000);
-                    return;
-                }
-                setTimeout(pollProgress, 2500);
-            } catch {
-                setTimeout(pollProgress, 5000);
-            }
-        };
-        setTimeout(pollProgress, 1500);
+        startAddProjectPoll(result.id, btn);
     } catch (e) {
         btn.disabled = false;
         btn.textContent = "Create & Deploy";
         document.getElementById("deploy-progress-panel").style.display = "none";
+    }
+}
+
+function startAddProjectPoll(projectId, btn) {
+    const poll = async () => {
+        try {
+            const p = await apiFetch(`/projects/${projectId}/deploy-progress`);
+            const bar = document.getElementById("progress-bar");
+            const msg = document.getElementById("progress-message");
+            if (bar) bar.style.width = `${p.pct || 0}%`;
+            if (msg) msg.textContent = p.message || "Working...";
+            if (bar) {
+                bar.className = "progress-bar";
+                if (p.step === "error") bar.classList.add("error");
+                if (p.step === "live") bar.classList.add("live");
+            }
+            if (p.step === "live") {
+                setTimeout(() => window.location.href = "/", 2000);
+                return;
+            }
+            if (p.step === "error") {
+                document.getElementById("deploy-heading").textContent = "Deployment Failed";
+                document.getElementById("deploy-error-detail").style.display = "block";
+                document.getElementById("deploy-error-message").textContent = p.message || "Unknown error";
+                document.getElementById("deploy-error-actions").style.display = "flex";
+                btn.disabled = false;
+                btn.textContent = "Retry";
+                return;
+            }
+            setTimeout(poll, 2500);
+        } catch {
+            setTimeout(poll, 5000);
+        }
+    };
+    setTimeout(poll, 1500);
+}
+
+async function retryDeploy() {
+    if (!currentProjectId) { toast("No project to retry", "error"); return; }
+    const btn = document.getElementById("retry-btn");
+    btn.disabled = true;
+    btn.textContent = "Retrying...";
+    document.getElementById("deploy-error-detail").style.display = "none";
+    document.getElementById("deploy-error-actions").style.display = "none";
+    document.getElementById("deploy-heading").textContent = "Deploying...";
+    document.getElementById("progress-bar").style.width = "0%";
+    document.getElementById("progress-bar").className = "progress-bar";
+    document.getElementById("progress-message").textContent = "Restarting deployment...";
+
+    try {
+        await apiFetch("/projects/deploy", { method: "POST", body: JSON.stringify({ project_id: currentProjectId }) });
+        startAddProjectPoll(currentProjectId, btn);
+    } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "Retry";
+        document.getElementById("deploy-error-detail").style.display = "block";
+        document.getElementById("deploy-error-message").textContent = e.message;
+        document.getElementById("deploy-error-actions").style.display = "flex";
     }
 }
 
@@ -328,6 +373,32 @@ async function loadAccountsPage() {
             </div>
         `).join("");
     } catch (e) {}
+}
+
+async function testGithubToken() {
+    const token = document.getElementById("acc-gh-token").value.trim();
+    if (!token) { toast("Enter a GitHub token first", "error"); return; }
+    const btn = document.getElementById("test-gh-btn");
+    const result = document.getElementById("test-gh-result");
+    btn.disabled = true;
+    btn.textContent = "Testing...";
+    result.innerHTML = "";
+    try {
+        const data = await apiFetch("/accounts/test-github-token", {
+            method: "POST",
+            body: JSON.stringify({ github_token: token }),
+        });
+        if (data.valid) {
+            result.innerHTML = `<span style="color:var(--green);">✓ Connected as @${data.username}</span>`;
+        } else {
+            result.innerHTML = `<span style="color:var(--red);">✗ ${data.error}</span>`;
+        }
+    } catch (e) {
+        result.innerHTML = `<span style="color:var(--red);">✗ ${e.message}</span>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Test";
+    }
 }
 
 async function addAccount() {

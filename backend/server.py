@@ -61,6 +61,9 @@ class DeleteProjectRequest(BaseModel):
 class DeleteAccountRequest(BaseModel):
     account_id: int
 
+class TestGitHubTokenRequest(BaseModel):
+    github_token: str
+
 # In-memory deploy progress tracker
 deploy_progress = {}
 
@@ -95,6 +98,14 @@ def update_github_token(req: UpdateGithubTokenRequest):
         raise HTTPException(status_code=400, detail=f"Invalid GitHub token: {e}")
     db.update_account(req.account_id, github_token=req.github_token)
     return {"message": f"GitHub token updated for @{username}"}
+
+@app.post("/api/accounts/test-github-token")
+def test_github_token(req: TestGitHubTokenRequest):
+    try:
+        username = render_deployer.get_github_username(req.github_token)
+        return {"valid": True, "username": username}
+    except Exception as e:
+        return {"valid": False, "error": str(e)}
 
 @app.delete("/api/accounts")
 def remove_account(req: DeleteAccountRequest):
@@ -132,6 +143,7 @@ def create_project(req: AddProjectRequest):
         frontend_framework=scan_result.get("frontend_framework"),
         entry_point=scan_result.get("entry_point"),
         account_id=req.account_id,
+        has_requirements=scan_result.get("has_requirements", False),
     )
     return {
         "id": id_,
@@ -169,7 +181,7 @@ def deploy_project(req: DeployRequest):
                 project_name=project["name"],
                 framework=project["framework"],
                 entry_point=project["entry_point"],
-                has_requirements=True,
+                has_requirements=project.get("has_requirements", 1),
             )
 
             _update_progress(project["id"], "github", "Getting GitHub username...", 10)
@@ -177,8 +189,11 @@ def deploy_project(req: DeployRequest):
             safe_name = project["name"].lower().replace(" ", "-").replace("_", "-")
             repo_name = f"wr-{safe_name}"
 
-            _update_progress(project["id"], "github", f"Creating GitHub repo '{repo_name}'...", 20)
-            clone_url = render_deployer.create_github_repo(github_token, repo_name)
+            _update_progress(project["id"], "github", f"Setting up GitHub repo '{repo_name}'...", 20)
+            try:
+                clone_url = render_deployer.get_repo_clone_url(github_token, username, repo_name)
+            except:
+                clone_url = render_deployer.create_github_repo(github_token, repo_name)
 
             _update_progress(project["id"], "github", "Pushing code to GitHub...", 30)
             render_deployer.push_to_github(github_token, username, repo_name, project["folder_path"])
@@ -193,7 +208,7 @@ def deploy_project(req: DeployRequest):
                 framework=project["framework"],
                 entry_point=project["entry_point"],
                 github_repo_url=github_repo_url,
-                has_requirements=True,
+                has_requirements=project.get("has_requirements", 1),
             )
 
             db.update_project(project["id"], render_service_id=service_id, deploy_url=service_url)

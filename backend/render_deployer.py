@@ -38,7 +38,7 @@ def _parse_error(resp):
 def get_github_username(token):
     resp = httpx.get(f"{GITHUB_API}/user", headers=_gh_headers(token), timeout=10)
     if resp.status_code != 200:
-        raise Exception(f"GitHub auth failed: {_parse_error(resp)}")
+        raise Exception(f"GitHub auth failed (HTTP {resp.status_code}): {_parse_error(resp)}")
     return resp.json()["login"]
 
 def create_github_repo(token, repo_name, private=True):
@@ -59,8 +59,18 @@ def create_github_repo(token, repo_name, private=True):
         err = _parse_error(resp)
         if "already exists" in err.lower():
             raise Exception(f"GitHub repo '{repo_name}' already exists. Delete it or use a different project name.")
-        raise Exception(f"GitHub error: {err}")
-    raise Exception(f"GitHub error: {_parse_error(resp)}")
+        raise Exception(f"GitHub error (HTTP 422): {err}")
+    raise Exception(f"GitHub repo creation failed (HTTP {resp.status_code}): {_parse_error(resp)}")
+
+def get_repo_clone_url(token, username, repo_name):
+    resp = httpx.get(
+        f"{GITHUB_API}/repos/{username}/{repo_name}",
+        headers=_gh_headers(token),
+        timeout=10,
+    )
+    if resp.status_code != 200:
+        raise Exception(f"Repo '{repo_name}' not found")
+    return resp.json()["clone_url"]
 
 def push_to_github(token, username, repo_name, project_path):
     deploy_id = str(uuid.uuid4())[:8]
@@ -70,7 +80,12 @@ def push_to_github(token, username, repo_name, project_path):
 
     shutil.copytree(
         project_path, temp_dir,
-        ignore=shutil.ignore_patterns("__pycache__", ".git", ".env", "node_modules", "venv", ".venv"),
+        ignore=shutil.ignore_patterns(
+            "__pycache__", ".git", ".env", "node_modules", "venv", ".venv",
+            ".pytest_cache", ".mypy_cache", "__pycache__", "*.pyc", "*.pyo",
+            ".DS_Store", "Thumbs.db", "*.db", "*.sqlite3",
+            "dist", "build", "*.egg-info", ".tox",
+        ),
     )
 
     repo_url = f"https://{token}@github.com/{username}/{repo_name}.git"
@@ -79,27 +94,33 @@ def push_to_github(token, username, repo_name, project_path):
         subprocess.run(["git", "init"], cwd=temp_dir, capture_output=True, check=True, timeout=30)
         subprocess.run(["git", "config", "user.email", "webrunner@local.dev"], cwd=temp_dir, capture_output=True, check=True, timeout=10)
         subprocess.run(["git", "config", "user.name", "WebRunner"], cwd=temp_dir, capture_output=True, check=True, timeout=10)
-        subprocess.run(["git", "add", "-A"], cwd=temp_dir, capture_output=True, check=True, timeout=30)
-        subprocess.run(["git", "commit", "-m", "Initial commit from WebRunner"], cwd=temp_dir, capture_output=True, check=True, timeout=30)
+        subprocess.run(["git", "add", "-A"], cwd=temp_dir, capture_output=True, check=True, timeout=120)
+        subprocess.run(["git", "commit", "-m", "Initial commit from WebRunner"], cwd=temp_dir, capture_output=True, check=True, timeout=60)
         subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=temp_dir, capture_output=True, check=True, timeout=10)
+        push_timeout = 600
         result = subprocess.run(
-            ["git", "push", "-u", "origin", "main"],
+            ["git", "push", "-uf", "origin", "main"],
             cwd=temp_dir,
             capture_output=True,
-            timeout=120,
+            timeout=push_timeout,
         )
         if result.returncode != 0:
             stderr = result.stderr.decode("utf-8", errors="replace")
             if "couldn't find remote ref" in stderr or "src refspec" in stderr:
                 subprocess.run(["git", "branch", "-M", "main"], cwd=temp_dir, capture_output=True, timeout=10)
                 result = subprocess.run(
-                    ["git", "push", "-u", "origin", "main"],
-                    cwd=temp_dir, capture_output=True, timeout=120,
+                    ["git", "push", "-uf", "origin", "main"],
+                    cwd=temp_dir, capture_output=True, timeout=push_timeout,
+                )
+            elif "failed to push" in stderr or "rejected" in stderr.lower():
+                result = subprocess.run(
+                    ["git", "push", "-uf", "origin", "main"],
+                    cwd=temp_dir, capture_output=True, timeout=push_timeout,
                 )
             if result.returncode != 0:
                 raise Exception(f"Git push failed: {result.stderr.decode('utf-8', errors='replace')[:300]}")
     except subprocess.TimeoutExpired:
-        raise Exception("Git push timed out. Your project might be too large or your internet is slow.")
+        raise Exception("Git push timed out after 10 minutes. The project might contain large files (>100MB each). Consider removing build artifacts, database files, or media uploads from the project folder.")
     except FileNotFoundError:
         raise Exception("Git is not installed or not in PATH. Install git from https://git-scm.com")
     finally:
@@ -130,10 +151,7 @@ def create_render_service(api_key, project_name, framework, entry_point, github_
     safe_name = project_name.lower().replace(" ", "-").replace("_", "-")
     service_name = f"wr-{safe_name}"
 
-    if has_requirements:
-        build_cmd = "pip install -r requirements.txt"
-    else:
-        build_cmd = "pip install gunicorn"
+    build_cmd = _get_build_cmd(has_requirements, framework)
 
     if framework == "django":
         start_cmd = f"gunicorn {safe_name}.wsgi:application"
@@ -231,9 +249,15 @@ def wait_for_deploy(api_key, service_id, progress_callback=None):
 
 # --- Config file generation ---
 
+def _get_build_cmd(has_requirements, framework):
+    if has_requirements:
+        return "pip install -r requirements.txt"
+    framework_pkgs = {"django": "django gunicorn", "flask": "flask gunicorn", "fastapi": "fastapi uvicorn gunicorn"}
+    return f"pip install {framework_pkgs.get(framework, 'gunicorn')}"
+
 def _generate_render_yaml(project_name, framework, entry_point, has_requirements):
     safe_name = project_name.lower().replace(" ", "-").replace("_", "-")
-    build_cmd = "pip install -r requirements.txt" if has_requirements else "pip install gunicorn"
+    build_cmd = _get_build_cmd(has_requirements, framework)
 
     if framework == "django":
         start_cmd = f"gunicorn {safe_name}.wsgi:application"

@@ -244,6 +244,11 @@ select.form-input { cursor: pointer; }
 .scan-row .label { color: var(--text-muted); }
 .scan-row .value { font-weight: 500; }
 
+/* GitHub test result */
+.gh-test-success { color: var(--green); }
+.gh-test-error { color: var(--red); }
+.gh-test-pending { color: var(--yellow); }
+
 /* Alert / Toast */
 .toast {
     position: fixed;
@@ -329,6 +334,21 @@ select.form-input { cursor: pointer; }
 }
 .progress-bar.error { background: var(--red); }
 .progress-bar.live { background: var(--green); }
+
+/* Error detail on add-project page */
+.deploy-error-detail {
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(225,112,85,0.1);
+    border: 1px solid var(--red);
+    border-radius: var(--radius-sm);
+}
+.deploy-error-actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
 
 /* Deploy detail on dashboard */
 .deploy-detail {
