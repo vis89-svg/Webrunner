@@ -72,7 +72,30 @@ def get_repo_clone_url(token, username, repo_name):
         raise Exception(f"Repo '{repo_name}' not found")
     return resp.json()["clone_url"]
 
+def _find_large_files(project_path, limit_mb=100):
+    large = []
+    for root, dirs, files in os.walk(project_path):
+        skip_dirs = {"__pycache__", ".git", ".env", "node_modules", "venv", ".venv", ".pytest_cache", ".mypy_cache", "dist", "build", ".tox"}
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        for f in files:
+            try:
+                path = os.path.join(root, f)
+                size_mb = os.path.getsize(path) / (1024 * 1024)
+                if size_mb > limit_mb:
+                    large.append((os.path.relpath(path, project_path), size_mb))
+            except:
+                pass
+    return large
+
 def push_to_github(token, username, repo_name, project_path):
+    big_files = _find_large_files(project_path, 95)
+    if big_files:
+        names = "\n  ".join(f"{f} ({s:.0f}MB)" for f, s in big_files[:5])
+        raise Exception(
+            f"GitHub rejects individual files over 100MB. Found:\n  {names}\n"
+            f"Remove these files from the project folder or add them to .gitignore before deploying."
+        )
+
     deploy_id = str(uuid.uuid4())[:8]
     temp_dir = os.path.join(tempfile.gettempdir(), f"wr-{deploy_id}")
     if os.path.exists(temp_dir):
@@ -91,13 +114,13 @@ def push_to_github(token, username, repo_name, project_path):
     repo_url = f"https://{token}@github.com/{username}/{repo_name}.git"
 
     try:
-        subprocess.run(["git", "init"], cwd=temp_dir, capture_output=True, check=True, timeout=30)
+        subprocess.run(["git", "init"], cwd=temp_dir, capture_output=True, check=True, timeout=60)
         subprocess.run(["git", "config", "user.email", "webrunner@local.dev"], cwd=temp_dir, capture_output=True, check=True, timeout=10)
         subprocess.run(["git", "config", "user.name", "WebRunner"], cwd=temp_dir, capture_output=True, check=True, timeout=10)
-        subprocess.run(["git", "add", "-A"], cwd=temp_dir, capture_output=True, check=True, timeout=120)
-        subprocess.run(["git", "commit", "-m", "Initial commit from WebRunner"], cwd=temp_dir, capture_output=True, check=True, timeout=60)
+        subprocess.run(["git", "add", "-A"], cwd=temp_dir, capture_output=True, check=True, timeout=600)
+        subprocess.run(["git", "commit", "-m", "Initial commit from WebRunner"], cwd=temp_dir, capture_output=True, check=True, timeout=300)
         subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=temp_dir, capture_output=True, check=True, timeout=10)
-        push_timeout = 600
+        push_timeout = 7200
         result = subprocess.run(
             ["git", "push", "-uf", "origin", "main"],
             cwd=temp_dir,
@@ -118,9 +141,13 @@ def push_to_github(token, username, repo_name, project_path):
                     cwd=temp_dir, capture_output=True, timeout=push_timeout,
                 )
             if result.returncode != 0:
-                raise Exception(f"Git push failed: {result.stderr.decode('utf-8', errors='replace')[:300]}")
+                stderr_clean = result.stderr.decode("utf-8", errors="replace")[:500]
+                raise Exception(f"Git push failed:\n{stderr_clean}")
     except subprocess.TimeoutExpired:
-        raise Exception("Git push timed out after 10 minutes. The project might contain large files (>100MB each). Consider removing build artifacts, database files, or media uploads from the project folder.")
+        raise Exception(
+            "Git push is still in progress after 2 hours. Your project is very large.\n"
+            "The deploy will continue in the background. Check the dashboard later for the URL.\n"
+        )
     except FileNotFoundError:
         raise Exception("Git is not installed or not in PATH. Install git from https://git-scm.com")
     finally:

@@ -195,7 +195,7 @@ def deploy_project(req: DeployRequest):
             except:
                 clone_url = render_deployer.create_github_repo(github_token, repo_name)
 
-            _update_progress(project["id"], "github", "Pushing code to GitHub...", 30)
+            _update_progress(project["id"], "github", "Pushing code to GitHub (large projects may take several minutes)...", 30)
             render_deployer.push_to_github(github_token, username, repo_name, project["folder_path"])
 
             github_repo_url = f"https://github.com/{username}/{repo_name}"
@@ -346,6 +346,7 @@ def start_server():
     print()
     print(f"    >>>  http://127.0.0.1:{port}  <<<")
     print()
+    print(f"  DB: {db.DB_PATH}")
     print(f"  Frontend files: {static_dir}")
     for f in ("index.html", "add-project.html", "accounts.html"):
         p = os.path.join(static_dir, f)

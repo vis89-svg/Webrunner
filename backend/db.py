@@ -1,8 +1,28 @@
 import sqlite3
 import os
+import shutil
+import sys
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "webrunner.db")
+def _get_db_path():
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA", os.path.expanduser("~"))
+    else:
+        base = os.environ.get("XDG_DATA_HOME", os.path.join(os.path.expanduser("~"), ".local", "share"))
+    db_dir = os.path.join(base, "Webrunner")
+    os.makedirs(db_dir, exist_ok=True)
+    return os.path.join(db_dir, "webrunner.db")
+
+DB_PATH = _get_db_path()
+
+# Migration: copy old DB from project folder to new location
+_old_db = os.path.join(os.path.dirname(os.path.dirname(__file__)), "webrunner.db")
+if os.path.isfile(_old_db) and not os.path.isfile(DB_PATH):
+    try:
+        shutil.copy2(_old_db, DB_PATH)
+        print(f"  [MIGRATED] credentials from {_old_db}")
+    except:
+        pass
 
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
